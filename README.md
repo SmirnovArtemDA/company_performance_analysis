@@ -2,7 +2,7 @@
 
 #### ЦЕЛИ И ЗАДАЧИ
 
-АНАЛИЗ ЭФФЕКТИВНОСТИ КОМПАНИИ Pens and Pencils с точки зрения её эффективности и дать рекомендации по масштабированию бизнеса, а именно в каком штате лучше открыть офлайн-магазин.
+[АНАЛИЗ ЭФФЕКТИВНОСТИ КОМПАНИИ Pens and Pencils](https://docs.google.com/spreadsheets/d/1N7rB4Hmvca2o5I_UcBrQJzVaIK8on__oN4mstj9VeMY/edit?usp=sharing) с точки зрения её эффективности и дать рекомендации по масштабированию бизнеса, а именно в каком штате лучше открыть офлайн-магазин.
 
 
 #### КОНКРЕТНЫЕ ШАГИ 
@@ -129,4 +129,103 @@ from first_order
 group by 1
 order by 1
 ```
+![Кол-во новых корпоративных клиентов по месяцам](https://github.com/SmirnovArtemDA/company_performance_analysis/assets/139784954/b5d678cc-3930-4bba-8997-77ab193d5587)
+
+Из нашего графика видно, что новые корпоративные клиенты активно приходили в 2017 году, а в дальнейшем приток пошел на спад. Это объясняет то, что компания нашла свою аудиторию и реботает с ней. Стоит поощрять как новых клиентов, так и старых, что бы оттока было как можно меньше. 
+
+##### Средняя выручка корп. заказчиков
+```
+WITH cnt_table AS 
+(SELECT  
+   DISTINCT (sc.cust_id),
+   sd.order_id,
+   cust_nm,
+   COUNT (zip_code) as office,
+   COUNT (subcategory) as sub,
+   round(sum(price * quantity * (1 - discount))) revenue
+FROM sql.store_customers as sc
+  JOIN sql.store_delivery as sd on sc.cust_id=sd.cust_id
+  JOIN sql.store_carts as sc1 on sd.order_id=sc1.order_id
+  JOIN sql.store_products as sp on sc1.product_id=sp.product_id
+WHERE sc.category = 'Corporate'
+GROUP BY 1,2,3) 
+
+SELECT 
+     cust_id,
+     cust_nm,
+     ROUND (AVG (office),1) as avg_office,
+     ROUND (AVG (sub),1) as avg_cnt,
+     ROUND (AVG (revenue),1) as avg_revenue
+FROM cnt_table 
+GROUP BY  1,2
+ORDER by 5 DESC
+```
+![chart](https://github.com/SmirnovArtemDA/company_performance_analysis/assets/139784954/84611e52-5fba-46d9-a816-44e3afbcb1d5)
+
+В таблице представлены все корпаративные заказчики и среднее количество их товаров заказе, выручки и офисов. На графике показаны топ -10 покупателей по средней выручке за заказ. Tamara Chand и Bill Shonely имеют самые высокие показатели.
+
+##### Информаци о доставках 
+Доля заказов по каждой категории
+```
+with cte1 as 
+(select
+    ship_mode,
+    count (order_id) as orders_cnt,
+    count (case when ship_mode='Standard Class' and ship_date-order_date <=6 then 'intime'
+                when ship_mode='Second Class' and ship_date-order_date <=4 then 'intime'
+                when ship_mode='First Class' and ship_date-order_date <=3 then 'intime'
+                when ship_mode='Same Day' and ship_date-order_date <=0 then 'intime'
+                else null end)::numeric as intime_orders_cnt
+from sql.store_delivery
+group by 1
+order by 1)
+select
+    ship_mode,
+    orders_cnt,
+    orders_cnt-intime_orders_cnt::integer as late_orders_cnt,
+    round (intime_orders_cnt/orders_cnt*100, 2) as  "% success"
+from cte1
+order by 4
+```
+![доля заказов по каждой категории](https://github.com/SmirnovArtemDA/company_performance_analysis/assets/139784954/d4e3e6dc-496e-49fe-b4ea-339a3a446063)
+
+Доставка second class по кварталам 
+```
+with cte1 as 
+(select
+    ship_mode,
+    extract (QUARTER FROM ship_date) as quarter,
+    count (order_id) as orders_cnt,
+    count (case when ship_mode='Second Class' and ship_date-order_date <=4 then 'intime'
+                else null end)::numeric as intime_orders_cnt
+from sql.store_delivery
+group by 1,2)
+
+select
+    quarter,
+    ship_mode,
+    orders_cnt,
+    orders_cnt-intime_orders_cnt::integer as late_orders_cnt,
+    round (intime_orders_cnt/orders_cnt*100, 2) as " % success"
+from cte1
+WHERE ship_mode='Second Class'
+order by 3
+```
+![доставка Second Class  по кварталам](https://github.com/SmirnovArtemDA/company_performance_analysis/assets/139784954/6849aa0f-4ac7-4224-b0a5-b2deebc7d01c)
+
+Из графиков и таблиц мы видим, что самая эффективная доставка - это первым классом. Остальные тоже хорошо себя показывают, кроме второго класса, где процент доставок во время всего 79%. В разрезе по кварталам видно, что они практически одинаковые и причина не может быть не контролируемая. Возможно стоит ее модернизировать и разобраться в проблеме.
+
+##### Регионы
+```
+SELECT 
+    state,
+    COUNT (sd.order_id) as cnt_order
+FROM sql.store_delivery
+GROUP BY 1
+ORDER BY 2 DESC
+```
+![Количество доставок по штатам](https://github.com/SmirnovArtemDA/company_performance_analysis/assets/139784954/72bffe0a-c371-4bd1-a498-b2c48fe38543)
+
+Из графика видно, что больше всего доставок идет в штат Калифорния, Лос-Анджелес и Сан-Франциско являются главными потребителями. Логично было бы открыть магазин там, что и будет правильным решением. Но если брать отдельно города, то всего больше в Нью-Йорке. И это будет тоже правильное решение. Логистика в данный штат стоит дороже а из 562 доставок столица штата забирает 450. Что позволит практически исключить доставку.  По моему решению, лучше открыть 2 магазина в обоих штатах, если позволяют средства. Если нет, то выбор - Калифорния.
+
 
